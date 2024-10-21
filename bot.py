@@ -9,13 +9,16 @@ import random
 # Define functions for data fetching and prediction
 def fetch_data(ticker, start_date, end_date):
     data = yf.download(ticker, start=start_date, end=end_date)
-    latest_data = data.iloc[-1]
+    latest_data = data.iloc[-1] if not data.empty else None
     return data, latest_data
 
 # Simple Linear Regression model for price prediction
 def predict_price(ticker, start_date, end_date, steps=1):
     ticker = ticker.upper()
     data, latest_data = fetch_data(ticker, start_date, end_date)
+
+    if data.empty:
+        return pd.DataFrame()  # Return an empty DataFrame if no data
 
     # Prepare the data for linear regression
     data['Date'] = np.arange(len(data))  # Convert dates into integers for regression
@@ -37,11 +40,12 @@ def predict_price(ticker, start_date, end_date, steps=1):
 
 # Define the SMA strategy function
 def sma_strategy(ticker, short_window, long_window):
-    data = yf.download(ticker, period="1d", interval="1d")
-    data['SMA_Short'] = data['Adj Close'].rolling(window=short_window).mean()
-    data['SMA_Long'] = data['Adj Close'].rolling(window=long_window).mean()
-    last_short_sma = data['SMA_Short'].iloc[-1]
-    last_long_sma = data['SMA_Long'].iloc[-1]
+    sma_data = yf.download(ticker, period="1d", interval="1d")
+    sma_data['SMA_Short'] = sma_data['Adj Close'].rolling(window=short_window).mean()
+    sma_data['SMA_Long'] = sma_data['Adj Close'].rolling(window=long_window).mean()
+    
+    last_short_sma = sma_data['SMA_Short'].iloc[-1]
+    last_long_sma = sma_data['SMA_Long'].iloc[-1]
 
     if last_short_sma > last_long_sma:
         return 'Buy'
@@ -66,7 +70,9 @@ def main():
 
     ticker = st.selectbox("Select a ticker symbol:", ["BTC-USD", "ETH-USD", "LTC-USD"])
 
-    date_range = st.date_input("Select a date range:", value=(pd.Timestamp('2022-01-01'), pd.Timestamp.today()))
+    # Hardcode the date range from 2015 to 2024
+    start_date = '2015-01-01'
+    end_date = '2024-01-01'
 
     short_window = st.slider("Short SMA Window:", min_value=1, max_value=100, value=10)
     long_window = st.slider("Long SMA Window:", min_value=1, max_value=200, value=50)
@@ -80,41 +86,37 @@ def main():
     if st.button("Predict"):
         if ticker:
             # Predict using linear regression
-            predicted_closing_price = predict_price(ticker, date_range[0], date_range[1], steps=prediction_steps)
+            predicted_closing_price = predict_price(ticker, start_date, end_date, steps=prediction_steps)
             
             if show_current_price:
-                current_price = fetch_data(ticker, start_date=date_range[0], end_date=date_range[1])[1]['Adj Close']
+                current_price = fetch_data(ticker, start_date, end_date)[1]['Adj Close']
                 st.write(f"Current Price for {ticker}:", current_price)
 
-            # Plot historical and predicted prices
-              # Hardcode the date range from 2015 to 2024
-               start_date = '2015-01-01'
-               end_date = '2024-01-01'  # You can adjust this to today's date or a specific date as needed
+            # Fetch historical data
+            data, _ = fetch_data(ticker, start_date=start_date, end_date=end_date)
 
-# Fetch historical data
-               data, _ = fetch_data(ticker, start_date=start_date, end_date=end_date)
+            # Create a figure for the graph
+            fig = go.Figure()
 
-# Create a figure for the graph
-               fig = go.Figure()
+            # Plot historical prices
+            fig.add_trace(go.Scatter(x=data.index, y=data['Adj Close'], mode='lines', name='Historical Prices'))
 
-# Plot historical prices
-               fig.add_trace(go.Scatter(x=data.index, y=data['Adj Close'], mode='lines', name='Historical Prices'))
+            # Plot predicted prices
+            if not predicted_closing_price.empty:
+                fig.add_trace(go.Scatter(x=predicted_closing_price.index, y=predicted_closing_price['Predicted Close'], mode='lines', name='Predicted Prices'))
 
-# Plot predicted prices
-               fig.add_trace(go.Scatter(x=predicted_closing_price.index, y=predicted_closing_price['Predicted Close'], mode='lines', name='Predicted Prices'))
+            # Update layout for better visualization
+            fig.update_layout(title=f'Historical and Predicted Prices for {ticker}',
+                              xaxis_title='Date',
+                              yaxis_title='Price',
+                              xaxis_rangeslider_visible=True)
 
-# Update layout for better visualization
-               fig.update_layout(title=f'Historical and Predicted Prices for {ticker}',
-                  xaxis_title='Date',
-                  yaxis_title='Price',
-                  xaxis_rangeslider_visible=True)
+            # Display the chart
+            st.plotly_chart(fig)
 
-# Display the chart
-               st.plotly_chart(fig)
-
-
-            if show_predicted_price:
-                st.write(f"Predicted Closing Price for {ticker}:", predicted_closing_price)
+            if show_predicted_price and not predicted_closing_price.empty:
+                st.write(f"Predicted Closing Prices for {ticker}:")
+                st.dataframe(predicted_closing_price)
 
             if show_sma_analysis:
                 decision = sma_strategy(ticker, short_window, long_window)
