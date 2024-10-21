@@ -86,15 +86,43 @@ def main():
                 current_price = fetch_data(ticker, start_date=date_range[0], end_date=date_range[1])[1]['Adj Close']
                 st.write(f"Current Price for {ticker}:", current_price)
 
-            # Plot historical and predicted prices
+                       # Fetch historical data
             data, _ = fetch_data(ticker, start_date=date_range[0], end_date=date_range[1])
+
+            # Create a figure for the graph
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=data.index, y=data['Adj Close'], mode='lines', name='Historical Prices'))
-            fig.add_trace(go.Scatter(x=predicted_closing_price.index, y=predicted_closing_price['Predicted Close'], mode='lines', name='Predicted Prices'))
-            fig.update_layout(title=f'Historical and Predicted Prices for {ticker}',
-                              xaxis_title='Date',
-                              yaxis_title='Price')
+
+            # Plot historical prices
+            fig.add_trace(go.Scatter(
+                x=data.index, 
+                y=data['Adj Close'], 
+                mode='lines', 
+                name='Historical Prices', 
+                line=dict(color='blue')
+            ))
+
+            # Plot predicted prices
+            fig.add_trace(go.Scatter(
+                x=predicted_closing_price.index, 
+                y=predicted_closing_price['Predicted Close'], 
+                mode='lines', 
+                name='Predicted Prices', 
+                line=dict(color='orange', dash='dash')
+            ))
+
+            # Update layout for better visualization
+            fig.update_layout(
+                title=f'Historical and Predicted Prices for {ticker}',
+                xaxis_title='Date',
+                yaxis_title='Price',
+                legend_title='Price Type',
+                showlegend=True,
+                xaxis_rangeslider_visible=True,  # Allow zooming using a range slider
+            )
+
+            # Display the chart
             st.plotly_chart(fig)
+
 
             if show_predicted_price:
                 st.write(f"Predicted Closing Price for {ticker}:", predicted_closing_price)
