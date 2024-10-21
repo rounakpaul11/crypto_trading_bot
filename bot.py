@@ -8,7 +8,6 @@ import streamlit as st
 import plotly.graph_objects as go
 import random
 import time
-from openai import OpenAI
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 
