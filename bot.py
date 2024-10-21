@@ -86,42 +86,31 @@ def main():
                 current_price = fetch_data(ticker, start_date=date_range[0], end_date=date_range[1])[1]['Adj Close']
                 st.write(f"Current Price for {ticker}:", current_price)
 
-                       # Fetch historical data
-            data, _ = fetch_data(ticker, start_date=date_range[0], end_date=date_range[1])
+            # Plot historical and predicted prices
+              # Hardcode the date range from 2015 to 2024
+               start_date = '2015-01-01'
+               end_date = '2024-01-01'  # You can adjust this to today's date or a specific date as needed
 
-            # Create a figure for the graph
-            fig = go.Figure()
+# Fetch historical data
+               data, _ = fetch_data(ticker, start_date=start_date, end_date=end_date)
 
-            # Plot historical prices
-            fig.add_trace(go.Scatter(
-                x=data.index, 
-                y=data['Adj Close'], 
-                mode='lines', 
-                name='Historical Prices', 
-                line=dict(color='blue')
-            ))
+# Create a figure for the graph
+               fig = go.Figure()
 
-            # Plot predicted prices
-            fig.add_trace(go.Scatter(
-                x=predicted_closing_price.index, 
-                y=predicted_closing_price['Predicted Close'], 
-                mode='lines', 
-                name='Predicted Prices', 
-                line=dict(color='orange', dash='dash')
-            ))
+# Plot historical prices
+               fig.add_trace(go.Scatter(x=data.index, y=data['Adj Close'], mode='lines', name='Historical Prices'))
 
-            # Update layout for better visualization
-            fig.update_layout(
-                title=f'Historical and Predicted Prices for {ticker}',
-                xaxis_title='Date',
-                yaxis_title='Price',
-                legend_title='Price Type',
-                showlegend=True,
-                xaxis_rangeslider_visible=True,  # Allow zooming using a range slider
-            )
+# Plot predicted prices
+               fig.add_trace(go.Scatter(x=predicted_closing_price.index, y=predicted_closing_price['Predicted Close'], mode='lines', name='Predicted Prices'))
 
-            # Display the chart
-            st.plotly_chart(fig)
+# Update layout for better visualization
+               fig.update_layout(title=f'Historical and Predicted Prices for {ticker}',
+                  xaxis_title='Date',
+                  yaxis_title='Price',
+                  xaxis_rangeslider_visible=True)
+
+# Display the chart
+               st.plotly_chart(fig)
 
 
             if show_predicted_price:
