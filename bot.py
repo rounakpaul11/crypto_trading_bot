@@ -14,13 +14,23 @@ from sklearn.model_selection import train_test_split
 # Define functions for data fetching and prediction
 def fetch_data(ticker, start_date, end_date):
     data = yf.download(ticker, start=start_date, end=end_date)
+    
+    # Check if data is empty
+    if data.empty:
+        return data, None  # Return None for latest_data to indicate no data
+    
     latest_data = data.iloc[-1]
     return data, latest_data
 
-# Define a simple linear regression model for price prediction
 def predict_price(ticker, start_date, end_date, steps=1):
     ticker = ticker.upper()
     data, latest_data = fetch_data(ticker, start_date, end_date)
+    
+    # Check if data is empty
+    if data.empty:
+        st.error(f"No data found for ticker: {ticker} in the specified date range.")
+        return None, None
+    
     historical_prices = data[['Adj Close']]
     historical_prices['Days'] = np.arange(len(historical_prices))
 
