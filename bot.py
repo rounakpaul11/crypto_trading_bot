@@ -9,6 +9,10 @@ import plotly.graph_objects as go
 import random
 import time
 from openai import OpenAI
+import os
+
+# Disable yfinance screener functionality to avoid the error
+os.environ["YFINANCE_NO_SCREENER"] = "true"
 
 # Load the ARIMA model
 arima_model = joblib.load('arima_model.joblib')
