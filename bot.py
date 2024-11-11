@@ -1,136 +1,174 @@
-import pandas as pd
-import yfinance as yf
-from sklearn.linear_model import LinearRegression
-import numpy as np
 import streamlit as st
-import plotly.graph_objects as go
-import random
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+from mplfinance.original_flavor import candlestick_ohlc
+import matplotlib.dates as mdates
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.linear_model import LinearRegression
 
-# Define functions for data fetching and prediction
-def fetch_data(ticker, start_date, end_date):
-    data = yf.download(ticker, start=start_date, end=end_date)
-    latest_data = data.iloc[-1]
-    return data, latest_data
+# Function to fit the ARIMA model and predict future prices
+def predict_future(data, order, future_days):
+    model = ARIMA(data, order=order)
+    model_fit = model.fit()
+    forecast = model_fit.forecast(steps=future_days)
+    return forecast
 
-# Simple Linear Regression model for price prediction
-def predict_price(ticker, start_date, end_date, steps=1):
-    ticker = ticker.upper()
-    data, latest_data = fetch_data(ticker, start_date, end_date)
+# Function to calculate moving averages
+def calculate_sma(data, window):
+    return data.rolling(window=window).mean()
 
-    # Prepare the data for linear regression
-    data['Date'] = np.arange(len(data))  # Convert dates into integers for regression
-    X = data[['Date']]
-    y = data['Adj Close']
+# Function to generate trading signals
+def generate_trading_signal(current_price, predicted_prices, threshold=0.02):
+    # Calculate average predicted price
+    avg_predicted_price = predicted_prices.mean()
+    price_change_percent = (avg_predicted_price - current_price) / current_price
     
-    model = LinearRegression()
-    model.fit(X, y)
-
-    # Predict future prices
-    future_dates = np.arange(len(data), len(data) + steps).reshape(-1, 1)
-    predicted_prices = model.predict(future_dates)
-
-    # Generate date range for the predicted prices
-    date_range = pd.date_range(start=end_date, periods=steps+1)[1:]
-    predicted_prices_df = pd.DataFrame(predicted_prices, index=date_range, columns=['Predicted Close'])
-
-    return predicted_prices_df
-
-# Define the SMA strategy function
-def sma_strategy(ticker, short_window, long_window):
-    data = yf.download(ticker, period="1d", interval="1d")
-    data['SMA_Short'] = data['Adj Close'].rolling(window=short_window).mean()
-    data['SMA_Long'] = data['Adj Close'].rolling(window=long_window).mean()
-    last_short_sma = data['SMA_Short'].iloc[-1]
-    last_long_sma = data['SMA_Long'].iloc[-1]
-
-    if last_short_sma > last_long_sma:
-        return 'Buy'
-    elif last_short_sma < last_long_sma:
-        return 'Sell'
+    if price_change_percent > threshold:
+        return "BUY", price_change_percent
+    elif price_change_percent < -threshold:
+        return "SELL", price_change_percent
     else:
-        return 'Hold'
+        return "HOLD", price_change_percent
 
-# Chatbot response generator
-def response_generator():
-    responses = [
-        "Hello there! How can I assist you today?",
-        "Hi, human! Is there anything I can help you with?",
-        "Do you need help?",
-    ]
-    response = random.choice(responses)
-    return response
-
-# Streamlit UI with user inputs
 def main():
-    st.title("Crypto Price Prediction and Analysis App")
+    st.set_page_config(page_title="Crypto Price Prediction", page_icon="📈", layout="wide")
 
-    ticker = st.selectbox("Select a ticker symbol:", ["BTC-USD", "ETH-USD", "LTC-USD"])
+    st.title("📊 Cryptocurrency Price Prediction")
+    st.write("""
+        Welcome to the Crypto Price Prediction app! You can select a cryptocurrency and predict future prices using historical data.
+        This tool fetches real-time data from the web and predicts future prices for various cryptocurrencies using ARIMA model.
+    """)
 
-    date_range = st.date_input("Select a date range:", value=(pd.Timestamp('2022-01-01'), pd.Timestamp.today()))
+    # Select cryptocurrency
+    st.sidebar.header('User Input Parameters')
+    currencies = ['BTC-USD', 'ETH-USD', 'LTC-USD', 'XRP-USD', 'DOGE-USD']
+    selected_currency = st.sidebar.selectbox('Select Ticker Symbol', currencies)
 
-    short_window = st.slider("Short SMA Window:", min_value=1, max_value=100, value=10)
-    long_window = st.slider("Long SMA Window:", min_value=1, max_value=200, value=50)
+    # Select date range
+    start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2022-01-01"))
+    end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("today"))
 
-    prediction_steps = st.number_input("Prediction Steps (Linear Regression):", value=1, min_value=1)
+    # Slider for SMA parameters
+    st.sidebar.subheader('SMA Parameters')
+    short_sma_window = st.sidebar.slider('Short SMA Window:', min_value=1, max_value=100, value=20)
+    long_sma_window = st.sidebar.slider('Long SMA Window:', min_value=1, max_value=200, value=50)
 
-    show_current_price = st.checkbox("Show Current Price")
-    show_predicted_price = st.checkbox("Show Predicted Price")
-    show_sma_analysis = st.checkbox("Show SMA Analysis")
+    # Slider for prediction steps
+    prediction_steps = st.sidebar.slider('Prediction Steps (Days):', min_value=1, max_value=30, value=7)
 
-    if st.button("Predict"):
-        if ticker:
-            # Predict using linear regression
-            predicted_closing_price = predict_price(ticker, date_range[0], date_range[1], steps=prediction_steps)
-            
-            if show_current_price:
-                current_price = fetch_data(ticker, start_date=date_range[0], end_date=date_range[1])[1]['Adj Close']
-                st.write(f"Current Price for {ticker}:", current_price)
+    # Signal threshold
+    signal_threshold = st.sidebar.slider('Signal Threshold (%):', min_value=1, max_value=10, value=2) / 100
 
-            # Plot historical and predicted prices
-            data, _ = fetch_data(ticker, start_date=date_range[0], end_date=date_range[1])
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=data.index, y=data['Adj Close'], mode='lines', name='Historical Prices'))
-            fig.add_trace(go.Scatter(x=predicted_closing_price.index, y=predicted_closing_price['Predicted Close'], mode='lines', name='Predicted Prices'))
-            fig.update_layout(title=f'Historical and Predicted Prices for {ticker}',
-                              xaxis_title='Date',
-                              yaxis_title='Price')
-            st.plotly_chart(fig)
+    # Fetch data from yfinance
+    data = yf.download(selected_currency, start=start_date, end=end_date, interval='1d')
 
-            if show_predicted_price:
-                st.write(f"Predicted Closing Price for {ticker}:", predicted_closing_price)
+    if not data.empty:
+        # Display a preview of the data
+        st.subheader(f'Historical Data for {selected_currency}')
+        st.write(data.tail())
 
-            if show_sma_analysis:
-                decision = sma_strategy(ticker, short_window, long_window)
-                st.write(f"Trading Decision for {ticker}:", decision)
+        # Calculate and plot moving averages
+        data['Short SMA'] = calculate_sma(data['Close'], short_sma_window)
+        data['Long SMA'] = calculate_sma(data['Close'], long_sma_window)
 
-# Execute the Streamlit app
-if __name__ == '__main__':
+        # Display historical data chart
+        st.subheader('Historical Price Data with SMAs')
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(data.index, data['Close'], label='Close Price', color='blue', linewidth=2)
+        ax.plot(data.index, data['Short SMA'], label=f'Short SMA ({short_sma_window})', color='orange', linestyle='--')
+        ax.plot(data.index, data['Long SMA'], label=f'Long SMA ({long_sma_window})', color='green', linestyle='--')
+        plt.xlabel('Date')
+        plt.ylabel('Price (USD)')
+        plt.title(f'{selected_currency} Historical Price with SMAs')
+        plt.legend()
+        plt.grid(True)
+        st.pyplot(fig)
+
+        # Prepare data for prediction
+        model_data = data[['Close']].dropna()
+        model_data['Days'] = np.arange(len(model_data))
+
+        # Fit Linear Regression model for prediction
+        lr_model = LinearRegression()
+        lr_model.fit(model_data['Days'].values.reshape(-1, 1), model_data['Close'].values)
+
+        # Predict future prices
+        future_days = np.arange(len(model_data), len(model_data) + prediction_steps).reshape(-1, 1)
+        future_prices = lr_model.predict(future_days)
+
+        # Create a DataFrame for predicted prices
+        future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=prediction_steps)
+        predicted_df = pd.DataFrame(future_prices, index=future_dates, columns=['Predicted Price'])
+
+        # Display predicted prices
+        st.subheader('Predicted Future Prices')
+        st.dataframe(predicted_df.style.format('${:.2f}'))
+
+        # Plot predicted prices on line graph
+        st.subheader(f"Price Prediction for the Next {prediction_steps} Days")
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(data.index, data['Close'], label='Historical Price', color='blue', linewidth=2)
+        ax.plot(predicted_df.index, predicted_df['Predicted Price'], label='Predicted Price', color='red', linestyle='--', linewidth=2)
+        plt.xlabel('Date')
+        plt.ylabel('Price (USD)')
+        plt.title(f'{selected_currency} Price Prediction for the Next {prediction_steps} Days')
+        plt.legend()
+        plt.grid(True)
+        st.pyplot(fig)
+
+        # Generate and display trading signal
+        current_price = data['Close'].iloc[-1]
+        signal, price_change = generate_trading_signal(current_price, predicted_df['Predicted Price'], signal_threshold)
+        
+        st.subheader("Trading Signal Analysis")
+        
+        # Create three columns for the metrics
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric(
+                label="Current Price",
+                value=f"${current_price:.2f}"
+            )
+        
+        with col2:
+            st.metric(
+                label="Average Predicted Price",
+                value=f"${predicted_df['Predicted Price'].mean():.2f}",
+                delta=f"{price_change*100:.2f}%"
+            )
+        
+        with col3:
+            # Style the trading signal
+            signal_color = {
+                "BUY": "green",
+                "SELL": "red",
+                "HOLD": "orange"
+            }
+            st.markdown(
+                f"""
+                <div style="padding: 10px; border-radius: 5px; text-align: center; 
+                background-color: {signal_color[signal]}; color: white; font-size: 24px; 
+                font-weight: bold;">
+                    {signal}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        # Footer
+        st.markdown("""---""")
+        st.markdown("""**Note:** The accuracy of the model may vary based on various factors including market conditions.
+        Trading signals are generated based on the predicted price movement and should not be considered as financial advice.
+        """, unsafe_allow_html=True)
+
+     
+
+    else:
+        st.error("Failed to retrieve data. Please try again later.")
+
+if __name__ == "__main__":
     main()
-
-# Chatbot integration as a sidebar
-st.sidebar.title("Simple Chat")
-
-# Initialize chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# Display chat messages from history on app rerun
-for message in st.session_state.messages:
-    with st.sidebar:
-        with st.empty():
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-# Accept user input
-if prompt := st.sidebar.text_input("Chat with me:"):
-    # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
-
-    # Display assistant response in chat message container
-    with st.sidebar:
-        with st.empty():
-            with st.chat_message("assistant"):
-                response = response_generator()
-                st.write(response)
-    # Add assistant response to chat history
-    st.session_state.messages.append({"role": "assistant", "content": response})
