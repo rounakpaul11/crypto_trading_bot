@@ -42,7 +42,7 @@ def generate_trading_signal(current_price, predicted_prices, threshold=0.02):
 def main():
     st.set_page_config(page_title="Crypto Price Prediction", page_icon="📈", layout="wide")
 
-    st.title("📊 Cryptocurrency Price Prediction")
+    st.title("📊 Crypt-Phi Assistant")
     st.write("""
         Welcome to the Crypto Price Prediction app! You can select a cryptocurrency and predict future prices using historical data.
         This tool fetches real-time data from the web and predicts future prices for various cryptocurrencies using ARIMA model.
