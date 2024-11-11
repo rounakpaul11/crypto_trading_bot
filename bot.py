@@ -9,23 +9,29 @@ import matplotlib.dates as mdates
 from statsmodels.tsa.arima.model import ARIMA
 from sklearn.linear_model import LinearRegression
 
-# Function to fit the ARIMA model and predict future prices
 def predict_future(data, order, future_days):
     model = ARIMA(data, order=order)
     model_fit = model.fit()
     forecast = model_fit.forecast(steps=future_days)
     return forecast
 
-# Function to calculate moving averages
 def calculate_sma(data, window):
     return data.rolling(window=window).mean()
 
-# Function to generate trading signals
 def generate_trading_signal(current_price, predicted_prices, threshold=0.02):
-    # Calculate average predicted price
-    avg_predicted_price = predicted_prices.mean()
+    # Convert predicted_prices to float if it's a pandas Series
+    if isinstance(predicted_prices, pd.Series):
+        avg_predicted_price = float(predicted_prices.mean())
+    else:
+        avg_predicted_price = float(np.mean(predicted_prices))
+    
+    # Ensure current_price is a float
+    current_price = float(current_price)
+    
+    # Calculate price change percentage
     price_change_percent = (avg_predicted_price - current_price) / current_price
     
+    # Generate signal based on threshold
     if price_change_percent > threshold:
         return "BUY", price_change_percent
     elif price_change_percent < -threshold:
@@ -62,113 +68,114 @@ def main():
     # Signal threshold
     signal_threshold = st.sidebar.slider('Signal Threshold (%):', min_value=1, max_value=10, value=2) / 100
 
-    # Fetch data from yfinance
-    data = yf.download(selected_currency, start=start_date, end=end_date, interval='1d')
+    try:
+        # Fetch data from yfinance
+        data = yf.download(selected_currency, start=start_date, end=end_date, interval='1d')
 
-    if not data.empty:
-        # Display a preview of the data
-        st.subheader(f'Historical Data for {selected_currency}')
-        st.write(data.tail())
+        if len(data) > 0:  # Changed from if not data.empty
+            # Display a preview of the data
+            st.subheader(f'Historical Data for {selected_currency}')
+            st.write(data.tail())
 
-        # Calculate and plot moving averages
-        data['Short SMA'] = calculate_sma(data['Close'], short_sma_window)
-        data['Long SMA'] = calculate_sma(data['Close'], long_sma_window)
+            # Calculate and plot moving averages
+            data['Short SMA'] = calculate_sma(data['Close'], short_sma_window)
+            data['Long SMA'] = calculate_sma(data['Close'], long_sma_window)
 
-        # Display historical data chart
-        st.subheader('Historical Price Data with SMAs')
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(data.index, data['Close'], label='Close Price', color='blue', linewidth=2)
-        ax.plot(data.index, data['Short SMA'], label=f'Short SMA ({short_sma_window})', color='orange', linestyle='--')
-        ax.plot(data.index, data['Long SMA'], label=f'Long SMA ({long_sma_window})', color='green', linestyle='--')
-        plt.xlabel('Date')
-        plt.ylabel('Price (USD)')
-        plt.title(f'{selected_currency} Historical Price with SMAs')
-        plt.legend()
-        plt.grid(True)
-        st.pyplot(fig)
+            # Display historical data chart
+            st.subheader('Historical Price Data with SMAs')
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(data.index, data['Close'], label='Close Price', color='blue', linewidth=2)
+            ax.plot(data.index, data['Short SMA'], label=f'Short SMA ({short_sma_window})', color='orange', linestyle='--')
+            ax.plot(data.index, data['Long SMA'], label=f'Long SMA ({long_sma_window})', color='green', linestyle='--')
+            plt.xlabel('Date')
+            plt.ylabel('Price (USD)')
+            plt.title(f'{selected_currency} Historical Price with SMAs')
+            plt.legend()
+            plt.grid(True)
+            st.pyplot(fig)
 
-        # Prepare data for prediction
-        model_data = data[['Close']].dropna()
-        model_data['Days'] = np.arange(len(model_data))
+            # Prepare data for prediction
+            model_data = data[['Close']].dropna()
+            model_data['Days'] = np.arange(len(model_data))
 
-        # Fit Linear Regression model for prediction
-        lr_model = LinearRegression()
-        lr_model.fit(model_data['Days'].values.reshape(-1, 1), model_data['Close'].values)
+            # Fit Linear Regression model for prediction
+            lr_model = LinearRegression()
+            lr_model.fit(model_data['Days'].values.reshape(-1, 1), model_data['Close'].values)
 
-        # Predict future prices
-        future_days = np.arange(len(model_data), len(model_data) + prediction_steps).reshape(-1, 1)
-        future_prices = lr_model.predict(future_days)
+            # Predict future prices
+            future_days = np.arange(len(model_data), len(model_data) + prediction_steps).reshape(-1, 1)
+            future_prices = lr_model.predict(future_days)
 
-        # Create a DataFrame for predicted prices
-        future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=prediction_steps)
-        predicted_df = pd.DataFrame(future_prices, index=future_dates, columns=['Predicted Price'])
+            # Create a DataFrame for predicted prices
+            future_dates = pd.date_range(start=data.index[-1] + pd.Timedelta(days=1), periods=prediction_steps)
+            predicted_df = pd.DataFrame(future_prices, index=future_dates, columns=['Predicted Price'])
 
-        # Display predicted prices
-        st.subheader('Predicted Future Prices')
-        st.dataframe(predicted_df.style.format('${:.2f}'))
+            # Display predicted prices
+            st.subheader('Predicted Future Prices')
+            st.dataframe(predicted_df.style.format('${:.2f}'))
 
-        # Plot predicted prices on line graph
-        st.subheader(f"Price Prediction for the Next {prediction_steps} Days")
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(data.index, data['Close'], label='Historical Price', color='blue', linewidth=2)
-        ax.plot(predicted_df.index, predicted_df['Predicted Price'], label='Predicted Price', color='red', linestyle='--', linewidth=2)
-        plt.xlabel('Date')
-        plt.ylabel('Price (USD)')
-        plt.title(f'{selected_currency} Price Prediction for the Next {prediction_steps} Days')
-        plt.legend()
-        plt.grid(True)
-        st.pyplot(fig)
+            # Plot predicted prices on line graph
+            st.subheader(f"Price Prediction for the Next {prediction_steps} Days")
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(data.index, data['Close'], label='Historical Price', color='blue', linewidth=2)
+            ax.plot(predicted_df.index, predicted_df['Predicted Price'], label='Predicted Price', color='red', linestyle='--', linewidth=2)
+            plt.xlabel('Date')
+            plt.ylabel('Price (USD)')
+            plt.title(f'{selected_currency} Price Prediction for the Next {prediction_steps} Days')
+            plt.legend()
+            plt.grid(True)
+            st.pyplot(fig)
 
-        # Generate and display trading signal
-        current_price = data['Close'].iloc[-1]
-        signal, price_change = generate_trading_signal(current_price, predicted_df['Predicted Price'], signal_threshold)
-        
-        st.subheader("Trading Signal Analysis")
-        
-        # Create three columns for the metrics
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric(
-                label="Current Price",
-                value=f"${current_price:.2f}"
-            )
-        
-        with col2:
-            st.metric(
-                label="Average Predicted Price",
-                value=f"${predicted_df['Predicted Price'].mean():.2f}",
-                delta=f"{price_change*100:.2f}%"
-            )
-        
-        with col3:
-            # Style the trading signal
-            signal_color = {
-                "BUY": "green",
-                "SELL": "red",
-                "HOLD": "orange"
-            }
-            st.markdown(
-                f"""
-                <div style="padding: 10px; border-radius: 5px; text-align: center; 
-                background-color: {signal_color[signal]}; color: white; font-size: 24px; 
-                font-weight: bold;">
-                    {signal}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            # Generate and display trading signal
+            current_price = float(data['Close'].iloc[-1])  # Convert to float
+            signal, price_change = generate_trading_signal(current_price, predicted_df['Predicted Price'], signal_threshold)
+            
+            st.subheader("Trading Signal Analysis")
+            
+            # Create three columns for the metrics
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric(
+                    label="Current Price",
+                    value=f"${current_price:.2f}"
+                )
+            
+            with col2:
+                st.metric(
+                    label="Average Predicted Price",
+                    value=f"${float(predicted_df['Predicted Price'].mean()):.2f}",  # Convert to float
+                    delta=f"{price_change*100:.2f}%"
+                )
+            
+            with col3:
+                signal_color = {
+                    "BUY": "green",
+                    "SELL": "red",
+                    "HOLD": "orange"
+                }
+                st.markdown(
+                    f"""
+                    <div style="padding: 10px; border-radius: 5px; text-align: center; 
+                    background-color: {signal_color[signal]}; color: white; font-size: 24px; 
+                    font-weight: bold;">
+                        {signal}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
-        # Footer
-        st.markdown("""---""")
-        st.markdown("""**Note:** The accuracy of the model may vary based on various factors including market conditions.
-        Trading signals are generated based on the predicted price movement and should not be considered as financial advice.
-        """, unsafe_allow_html=True)
+            # Footer
+            st.markdown("""---""")
+            st.markdown("""**Note:** The accuracy of the model may vary based on various factors including market conditions.
+            Trading signals are generated based on the predicted price movement and should not be considered as financial advice.
+            """, unsafe_allow_html=True)
 
-     
+        else:
+            st.error("No data available for the selected date range. Please try different dates.")
 
-    else:
-        st.error("Failed to retrieve data. Please try again later.")
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()
